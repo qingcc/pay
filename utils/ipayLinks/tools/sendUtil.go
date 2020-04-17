@@ -1,10 +1,12 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	model2 "github.com/qingcc/wechat/utils/ipayLinks/model"
 	"github.com/qingcc/yi/commobj"
 	"github.com/qingcc/yi/utils/httputils"
+	logserviceutil "github.com/qingcc/yi/utils/rpcx/logservice"
 	"log"
 	"net/http"
 	"strings"
@@ -21,10 +23,10 @@ func IpayLinksSendData(s *model2.Sign, res interface{}, storage bool) (httpMessa
 
 	s.Signature()
 	url := s.Domain
-	var(
-		code int
+	var (
+		code    int
 		message string
-		data []byte
+		data    []byte
 	)
 	if s.Method == http.MethodPost {
 		jsonReq, err := json.Marshal(s.Data)
@@ -35,7 +37,7 @@ func IpayLinksSendData(s *model2.Sign, res interface{}, storage bool) (httpMessa
 		resultMessageArr = append(resultMessageArr, "[Marshal Request]Success")
 		httpMessageResult.Req = string(jsonReq)
 		code, message, data = httpService.SendJson(url, jsonReq, s.Header, 1, res)
-	}else if s.Method == http.MethodGet {
+	} else if s.Method == http.MethodGet {
 		url += "?" + s.Param
 		code, message, data = httpService.GetJson(url, s.Header, 1, res)
 	}
@@ -58,6 +60,6 @@ func IpayLinksSendData(s *model2.Sign, res interface{}, storage bool) (httpMessa
 	httpMessageResult.ResultMessage = strings.Join(resultMessageArr, ",")
 	httpMessageResult.SplResultMessage = strings.Join(resultMessageArr, ",")
 	httpMessageResult.End = time.Now()
+	go logserviceutil.PushLog2Db(context.Background(), httpMessageResult) //写入日志
 	return
 }
-

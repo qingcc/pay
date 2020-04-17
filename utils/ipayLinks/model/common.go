@@ -12,31 +12,36 @@ import (
 	"strings"
 )
 
-var(
-	test_url = "https://mapi1.uat.ipaylinks.com/mapi/OpenAPI.do" //联调
-	inner_url = "https://mapi-aw.ipaylinks.com/mapi/OpenAPI.do"//product 服务器在国内
-	fore_url = "https://mapi.ipaylinks.com/mapi/OpenAPI.do" //product 服务器在国外
-	signKey = "md5SignKey"
-	privateKeyFile = "static/keys/private.pem"
-	publicKeyFile = "static/keys/public.pem"
-	header = map[string]string{}
+var (
+	MerchantId = "tuling"
+	CarrierId  = "tourmind_app"                //发生交易的网站域名或者 APP 名称，需在 iPayLinks 备案成功。商户可 MPS 商户后台申请
+	NotifyUrl  = "www.tourmind_app.com/notify" //商户服务器接收 iPayLinks 异步结果的通知地址，可通过 MPS 商户后台配置
+	signKey    = "md5SignKey"
+
+	test_url         = "https://mapi1.uat.ipaylinks.com/mapi/OpenAPI.do" //联调
+	inner_url        = "https://mapi-aw.ipaylinks.com/mapi/OpenAPI.do"   //product 服务器在国内
+	fore_url         = "https://mapi.ipaylinks.com/mapi/OpenAPI.do"      //product 服务器在国外
+	privateKeyFile   = "static/keys/private.pem"
+	publicKeyFile    = "static/keys/public.pem"
+	header           = map[string]string{}
 	selectedSignType = signTypeRsa
 )
 
 var (
 	signTypeMd5 = "MD5"
-	signTypeRsa = "rsa"
+	signTypeRsa = "RSA"
 )
+
 type Sign struct {
-	Sign string `json:"sign"` //存储签名之后生成的签名字符串
-	SignType string `json:"signType"`//签名类型（eg. MD5 or RSA)
-	SignData []byte `json:"-"` //需要使用私钥签名的数据
-	DecryptData []byte `json:"-"`//需要使用私钥解密的数据
-	Method string `json:"-"` //请求方式（eg. http.MethodPost or http.MethodGet)
-	Domain string    `json:"-"` //请求域名
-	Header map[string]string `json:"-"` //请求header
-	Data interface{} //其他的请求参数
-	Param string     `json:"-"`//为GET请求时，生成的已经签名带参数的uri
+	Sign        string            `json:"sign"`     //存储签名之后生成的签名字符串
+	SignType    string            `json:"signType"` //签名类型（eg. MD5 or RSA)
+	SignData    []byte            `json:"-"`        //需要使用私钥签名的数据
+	DecryptData []byte            `json:"-"`        //需要使用私钥解密的数据
+	Method      string            `json:"-"`        //请求方式（eg. http.MethodPost or http.MethodGet)
+	Domain      string            `json:"-"`        //请求域名
+	Header      map[string]string `json:"-"`        //请求header
+	Data        interface{}       //其他的请求参数
+	Param       string            `json:"-"` //为GET请求时，生成的已经签名带参数的uri
 }
 
 func DefaultNewSign(data interface{}) *Sign {
@@ -52,23 +57,22 @@ func NewSign(signType, method string, domainType int, h map[string]string, data 
 		domain = inner_url
 	}
 	return &Sign{
-		SignType:    signType,
-		Method:      method,
-		Domain:      domain,
-		Header:      h,
-		Data:		 data,
+		SignType: signType,
+		Method:   method,
+		Domain:   domain,
+		Header:   h,
+		Data:     data,
 	}
 }
 
-
 // 签名
-func (s *Sign)Signature() (err error) {
+func (s *Sign) Signature() (err error) {
 	dataMap, signSlice := make(map[string]string), make([]string, 0)
 	jsonData, _ := json.Marshal(s.Data)
 	json.Unmarshal(jsonData, &dataMap)
 	for k, v := range dataMap {
 		if strings.TrimSpace(v) != "" {
-			signSlice = append(signSlice, k + "=" + v)
+			signSlice = append(signSlice, k+"="+v)
 		}
 	}
 	sort.Strings(signSlice)
@@ -77,13 +81,13 @@ func (s *Sign)Signature() (err error) {
 	err = s.signContent()
 
 	log.Println("sign before:", strings.Join(signSlice, "&"))
-	signSlice = append(signSlice, "sign="+ s.Sign)
+	signSlice = append(signSlice, "sign="+s.Sign)
 	s.Param = url.QueryEscape(strings.Join(signSlice, "&"))
 	log.Println("sign after:", s.Param)
 	return
 }
 
-func (s *Sign)signContent() (err error) {
+func (s *Sign) signContent() (err error) {
 	switch s.SignType {
 	case signTypeMd5:
 		err = s.signMd5()
@@ -94,7 +98,7 @@ func (s *Sign)signContent() (err error) {
 	return
 }
 
-func (s *Sign)signMd5() (err error) {
+func (s *Sign) signMd5() (err error) {
 	signMd5 := string(s.SignData) + "signKey" + signKey
 	log.Printf("待签名数据： %v", signMd5)
 	newMd5 := md5.New()
@@ -105,14 +109,14 @@ func (s *Sign)signMd5() (err error) {
 }
 
 //私钥签名（公钥验证）
-func (s *Sign)signRsa() error {
+func (s *Sign) signRsa() error {
 	signedData, err := utils.RsaSign(s.SignData)
 	s.Sign = string(signedData)
 	return err
 }
 
 //私钥解密（公钥加密）
-func (s *Sign)decryptRsa() error {
+func (s *Sign) decryptRsa() error {
 	decryptedData, err := utils.RsaDecrypt(s.DecryptData)
 	s.Sign = string(decryptedData)
 	return err
@@ -134,7 +138,7 @@ func struct2Slice(data interface{}) []string {
 }
 
 //同步响应/异步通知 签名验证
-func (s *Sign)VerifyNotifySignData() (verified bool) {
+func (s *Sign) VerifyNotifySignData() (verified bool) {
 	sign := s.Sign
 	dataSlice := struct2Slice(s.Data)
 	switch s.SignType {
